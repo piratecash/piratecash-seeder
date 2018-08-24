@@ -15,6 +15,7 @@
 using namespace std;
 
 bool fTestNet = false;
+int nStatsSleepSeconds = 1;
 
 class CDnsSeedOpts {
 public:
@@ -42,6 +43,7 @@ public:
                               "-h <host>       Hostname of the DNS seed\n"
                               "-n <ns>         Hostname of the nameserver\n"
                               "-m <mbox>       E-Mail address reported in SOA records\n"
+                              "-s <seconds>    Number of seconds to sleep before printing stats (default 1)\n"
                               "-t <threads>    Number of crawlers to run in parallel (default 96)\n"
                               "-d <threads>    Number of DNS server threads (default 4)\n"
                               "-p <port>       UDP port to listen on (default 53)\n"
@@ -61,6 +63,7 @@ public:
         {"host", required_argument, 0, 'h'},
         {"ns",   required_argument, 0, 'n'},
         {"mbox", required_argument, 0, 'm'},
+        {"seconds", required_argument, 0, 's'},
         {"threads", required_argument, 0, 't'},
         {"dnsthreads", required_argument, 0, 'd'},
         {"port", required_argument, 0, 'p'},
@@ -75,7 +78,7 @@ public:
         {0, 0, 0, 0}
       };
       int option_index = 0;
-      int c = getopt_long(argc, argv, "h:n:m:t:p:d:o:i:k:w:?", long_options, &option_index);
+      int c = getopt_long(argc, argv, "h:n:m:s:t:p:d:o:i:k:w:?", long_options, &option_index);
       if (c == -1) break;
       switch (c) {
         case 'h': {
@@ -90,6 +93,12 @@ public:
 
         case 'n': {
           ns = optarg;
+          break;
+        }
+
+        case 's': {
+          int n = strtol(optarg, NULL, 10);
+          if (n > 0 && n < 3600) nStatsSleepSeconds = n;
           break;
         }
 
@@ -395,7 +404,7 @@ extern "C" void* ThreadStats(void*) {
       queries += dnsThread[i]->dbQueries;
     }
     printf("%s %i/%i available (%i tried in %is, %i new, %i active), %i banned; %llu DNS requests, %llu db queries", c, stats.nGood, stats.nAvail, stats.nTracked, stats.nAge, stats.nNew, stats.nAvail - stats.nTracked - stats.nNew, stats.nBanned, (unsigned long long)requests, (unsigned long long)queries);
-    Sleep(1000);
+    Sleep(nStatsSleepSeconds * 1000);
   } while(1);
   return nullptr;
 }
