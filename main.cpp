@@ -14,6 +14,7 @@
 
 using namespace std;
 
+bool fSimpleLog = false;
 bool fTestNet = false;
 int nStatsSleepSeconds = 1;
 
@@ -22,6 +23,7 @@ public:
   int nThreads;
   int nPort;
   int nDnsThreads;
+  int fUseSimpleLog;
   int fUseTestNet;
   int fWipeBan;
   int fWipeIgnore;
@@ -33,7 +35,7 @@ public:
   const char *ipv6_proxy;
   std::set<uint64_t> filter_whitelist;
 
-  CDnsSeedOpts() : nThreads(96), nDnsThreads(4), nPort(53), mbox(NULL), ns(NULL), host(NULL), tor(NULL), fUseTestNet(false), fWipeBan(false), fWipeIgnore(false), ipv4_proxy(NULL), ipv6_proxy(NULL) {}
+  CDnsSeedOpts() : nThreads(96), nDnsThreads(4), nPort(53), mbox(NULL), ns(NULL), host(NULL), tor(NULL), fUseSimpleLog(false), fUseTestNet(false), fWipeBan(false), fWipeIgnore(false), ipv4_proxy(NULL), ipv6_proxy(NULL) {}
 
   void ParseCommandLine(int argc, char **argv) {
     static const char *help = "Dash-seeder\n"
@@ -51,6 +53,7 @@ public:
                               "-i <ip:port>    IPV4 SOCKS5 proxy IP/Port\n"
                               "-k <ip:port>    IPV6 SOCKS5 proxy IP/Port\n"
                               "-w f1,f2,...    Allow these flag combinations as filters\n"
+                              "--simplelog     Do not use advanced stats output, use simple log-like one instead\n"
                               "--testnet       Use testnet\n"
                               "--wipeban       Wipe list of banned nodes\n"
                               "--wipeignore    Wipe list of ignored nodes\n"
@@ -71,6 +74,7 @@ public:
         {"proxyipv4", required_argument, 0, 'i'},
         {"proxyipv6", required_argument, 0, 'k'},
         {"filter", required_argument, 0, 'w'},
+        {"simplelog", no_argument, &fUseSimpleLog, 1},
         {"testnet", no_argument, &fUseTestNet, 1},
         {"wipeban", no_argument, &fWipeBan, 1},
         {"wipeignore", no_argument, &fWipeBan, 1},
@@ -389,14 +393,16 @@ extern "C" void* ThreadStats(void*) {
     strftime(c, 256, "[%y-%m-%d %H:%M:%S]", tmp);
     CAddrDbStats stats;
     db.GetStats(stats);
-    if (first)
-    {
-      first = false;
-      printf("\n\n\n\x1b[3A");
+    if (!fSimpleLog) {
+      if (first)
+      {
+        first = false;
+        printf("\n\n\n\x1b[3A");
+      }
+      else
+        printf("\x1b[2K\x1b[u");
+      printf("\x1b[s");
     }
-    else
-      printf("\x1b[2K\x1b[u");
-    printf("\x1b[s");
     uint64_t requests = 0;
     uint64_t queries = 0;
     for (unsigned int i=0; i<dnsThread.size(); i++) {
@@ -404,6 +410,9 @@ extern "C" void* ThreadStats(void*) {
       queries += dnsThread[i]->dbQueries;
     }
     printf("%s %i/%i available (%i tried in %is, %i new, %i active), %i banned; %llu DNS requests, %llu db queries", c, stats.nGood, stats.nAvail, stats.nTracked, stats.nAge, stats.nNew, stats.nAvail - stats.nTracked - stats.nNew, stats.nBanned, (unsigned long long)requests, (unsigned long long)queries);
+    if (fSimpleLog) {
+      printf("\n");
+    }
     Sleep(nStatsSleepSeconds * 1000);
   } while(1);
   return nullptr;
@@ -464,6 +473,7 @@ int main(int argc, char **argv) {
       SetProxy(NET_IPV6, service);
     }
   }
+  fSimpleLog = opts.fUseSimpleLog;
   bool fDNS = true;
   if (opts.fUseTestNet) {
       printf("Using testnet.\n");
