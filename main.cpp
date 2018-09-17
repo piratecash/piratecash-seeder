@@ -354,6 +354,7 @@ extern "C" void* ThreadDumper(void*) {
         count++;
     {
       vector<CAddrReport> v = db.GetAll();
+      if (v.empty()) continue;
       sort(v.begin(), v.end(), StatCompare);
       FILE *f = fopen("dnsseed.dat.new","w+");
       if (f) {

@@ -245,9 +245,10 @@ public:
     std::vector<CAddrReport> ret;
     SHARED_CRITICAL_BLOCK(cs) {
       for (std::deque<int>::const_iterator it = ourId.begin(); it != ourId.end(); it++) {
-        const CAddrInfo &info = idToInfo[*it];
-        if (info.success > 0) {
-          ret.push_back(info.GetReport());
+        const auto itInfo = idToInfo.find(*it);
+        if (itInfo == idToInfo.end()) continue;
+        if (itInfo->second.success > 0) {
+          ret.push_back(itInfo->second.GetReport());
         }
       }
     }
