@@ -365,6 +365,10 @@ extern "C" void* ThreadDumper(void*) {
         rename("dnsseed.dat.new", "dnsseed.dat");
       }
       FILE *d = fopen("dnsseed.dump", "w");
+      if (!d) {
+        perror("fopen(dnsseed.dump, w)");
+        continue;
+      }
       fprintf(d, "# address                                        good  lastSuccess    %%(2h)   %%(8h)   %%(1d)   %%(7d)  %%(30d)  blocks      svcs  version\n");
       double stat[5]={0,0,0,0,0};
       for (vector<CAddrReport>::const_iterator it = v.begin(); it < v.end(); it++) {
@@ -378,6 +382,10 @@ extern "C" void* ThreadDumper(void*) {
       }
       fclose(d);
       FILE *ff = fopen("dnsstats.log", "a");
+      if (!ff) {
+        perror("fopen(ddnsstats.log, a)");
+        continue;
+      }
       fprintf(ff, "%llu %g %g %g %g %g\n", (unsigned long long)(time(NULL)), stat[0], stat[1], stat[2], stat[3], stat[4]);
       fclose(ff);
     }
