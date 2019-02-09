@@ -432,8 +432,12 @@ static const string testnet_seeds[] = {"testnet-seed.dash.org", "testnet-seed.da
 static const string *seeds = mainnet_seeds;
 
 extern "C" void* ThreadSeeder(void*) {
-  if (!fTestNet){
-    // db.Add(CService("darkcoin.io", 9999), true);
+  // When all seeders are down we need some reliable nodes to get initial addresses from.
+  // Uncomment corresponding line and replace "some...ip" string with an IP of a good peer.
+  if (fTestNet) {
+    // db.Add(CService("sometestnnetnodeip", 19999), true);
+  } else {
+    // db.Add(CService("somemainnnetnodeip", 9999), true);
   }
   do {
     for (int i=0; seeds[i] != ""; i++) {
