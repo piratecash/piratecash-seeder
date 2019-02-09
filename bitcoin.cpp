@@ -81,7 +81,8 @@ class CNode {
     BeginMessage("version");
     int nBestHeight = GetRequireHeight();
     string ver = "/dash-seeder:0.13.0/";
-    vSend << PROTOCOL_VERSION << nLocalServices << nTime << you << me << nLocalNonce << ver << nBestHeight;
+    bool fRelay = false;
+    vSend << PROTOCOL_VERSION << nLocalServices << nTime << you << me << nLocalNonce << ver << nBestHeight << fRelay;
     EndMessage();
   }
  
@@ -111,6 +112,9 @@ class CNode {
         vRecv >> strSubVer;
       if (nVersion >= 209 && !vRecv.empty())
         vRecv >> nStartingHeight;
+      bool fRelay;
+      if (nVersion >= 209 && !vRecv.empty())
+        vRecv >> fRelay;
       
       if (nVersion >= 209) {
         BeginMessage("verack");
