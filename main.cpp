@@ -427,8 +427,8 @@ extern "C" void* ThreadStats(void*) {
   return nullptr;
 }
 
-static const string mainnet_seeds[] = {"dnsseed.dash.org", "dnsseed.dashdot.io", "dnsseed.masternode.io", ""};
-static const string testnet_seeds[] = {"testnet-seed.dash.org", "testnet-seed.dashdot.io", "test.dnsseed.masternode.io", ""};
+static const string mainnet_seeds[] = {"m1.piratecash.net", "m2.piratecash.net", ""};
+static const string testnet_seeds[] = {"m1.piratecash.net", "m2.piratecash.net", ""};
 static const string *seeds = mainnet_seeds;
 
 extern "C" void* ThreadSeeder(void*) {
