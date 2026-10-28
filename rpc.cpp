@@ -139,6 +139,8 @@ Addresses FetchMasternodes(const Config& config) {
         curl_slist_append(nullptr, "Content-Type: application/json"), curl_slist_free_all);
     if (!headers) throw std::runtime_error("Cannot initialize RPC HTTP headers");
     std::string response;
+    char errorBuffer[CURL_ERROR_SIZE] = {};
+    curl_easy_setopt(curl.get(), CURLOPT_ERRORBUFFER, errorBuffer);
     curl_easy_setopt(curl.get(), CURLOPT_URL, config.rpcUrl.c_str());
     curl_easy_setopt(curl.get(), CURLOPT_USERNAME, config.rpcUser.c_str());
     curl_easy_setopt(curl.get(), CURLOPT_PASSWORD, config.rpcPassword.c_str());
@@ -153,7 +155,9 @@ Addresses FetchMasternodes(const Config& config) {
     curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, Receive);
     curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &response);
     const auto status = curl_easy_perform(curl.get());
-    if (status != CURLE_OK) throw std::runtime_error(std::string("RPC request failed: ") + curl_easy_strerror(status));
+    if (status != CURLE_OK)
+        throw std::runtime_error(std::string("RPC request failed: ") +
+            (errorBuffer[0] ? errorBuffer : curl_easy_strerror(status)));
     long httpStatus = 0;
     curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &httpStatus);
     if (httpStatus != 200) throw std::runtime_error("RPC HTTP status " + std::to_string(httpStatus));

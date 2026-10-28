@@ -49,7 +49,7 @@ typedef enum {
 //  0: ok
 // -1: premature end of input, forward reference, component > 63 char, invalid character
 // -2: insufficient space in output
-int static parse_name(const unsigned char **inpos, const unsigned char *inend, const unsigned char *inbuf, char *buf, size_t bufsize) {
+static int parse_name(const unsigned char **inpos, const unsigned char *inend, const unsigned char *inbuf, char *buf, size_t bufsize) {
   size_t bufused = 0;
   int init = 1;
   do {
@@ -98,9 +98,9 @@ int static parse_name(const unsigned char **inpos, const unsigned char *inend, c
 // -1: component > 63 characters
 // -2: insufficent space in output
 // -3: two subsequent dots
-int static write_name(unsigned char** outpos, const unsigned char *outend, const char *name, int offset) {
+static int write_name(unsigned char** outpos, const unsigned char *outend, const char *name, int offset) {
   while (*name != 0) {
-    char *dot = strchr(name, '.');
+    const char *dot = strchr(name, '.');
     const char *fin = dot;
     if (!dot) fin = name + strlen(name);
     if (fin - name > 63) return -1;
@@ -124,7 +124,7 @@ int static write_name(unsigned char** outpos, const unsigned char *outend, const
   return 0;
 }
 
-int static write_record(unsigned char** outpos, const unsigned char *outend, const char *name, int offset, dns_type typ, dns_class cls, int ttl) {
+static int write_record(unsigned char** outpos, const unsigned char *outend, const char *name, int offset, dns_type typ, dns_class cls, int ttl) {
   unsigned char *oldpos = *outpos;
   int error = 0;
   // name
@@ -144,7 +144,7 @@ error:
 }
 
 
-int static write_record_a(unsigned char** outpos, const unsigned char *outend, const char *name, int offset, dns_class cls, int ttl, const addr_t *ip) {
+static int write_record_a(unsigned char** outpos, const unsigned char *outend, const char *name, int offset, dns_class cls, int ttl, const addr_t *ip) {
   if (ip->v != 4)
      return -6;
   unsigned char *oldpos = *outpos;
@@ -163,7 +163,7 @@ error:
   return error;
 }
 
-int static write_record_aaaa(unsigned char** outpos, const unsigned char *outend, const char *name, int offset, dns_class cls, int ttl, const addr_t *ip) {
+static int write_record_aaaa(unsigned char** outpos, const unsigned char *outend, const char *name, int offset, dns_class cls, int ttl, const addr_t *ip) {
   if (ip->v != 6)
      return -6;
   unsigned char *oldpos = *outpos;
@@ -182,7 +182,7 @@ error:
   return error;
 }
 
-int static write_record_ns(unsigned char** outpos, const unsigned char *outend, char *name, int offset, dns_class cls, int ttl, const char *ns) {
+static int write_record_ns(unsigned char** outpos, const unsigned char *outend, char *name, int offset, dns_class cls, int ttl, const char *ns) {
   unsigned char *oldpos = *outpos;
   int ret = write_record(outpos, outend, name, offset, TYPE_NS, cls, ttl);
   if (ret) return ret;
@@ -200,7 +200,7 @@ error:
   return error;
 }
 
-int static write_record_soa(unsigned char** outpos, const unsigned char *outend, char *name, int offset, dns_class cls, int ttl, const char* mname, const char *rname,
+static int write_record_soa(unsigned char** outpos, const unsigned char *outend, char *name, int offset, dns_class cls, int ttl, const char* mname, const char *rname,
                      uint32_t serial, uint32_t refresh, uint32_t retry, uint32_t expire, uint32_t minimum) {
   unsigned char *oldpos = *outpos;
   int ret = write_record(outpos, outend, name, offset, TYPE_SOA, cls, ttl);
@@ -227,7 +227,7 @@ error:
   return error;
 }
 
-ssize_t static dnshandle(dns_opt_t *opt, const unsigned char *inbuf, size_t insize, unsigned char* outbuf) {
+static ssize_t dnshandle(dns_opt_t *opt, const unsigned char *inbuf, size_t insize, unsigned char* outbuf) {
   int error = 0;
   if (insize < 12) // DNS header
     return -1;
