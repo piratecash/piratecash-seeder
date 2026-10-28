@@ -1,62 +1,122 @@
 piratecash-seeder
-==============
+=================
 
-piratecash-seeder is a crawler for the PirateCash network, which exposes a list
-of reliable nodes via a built-in DNS server.
+Authoritative DNS seed backed by PirateCash Core JSON-RPC. The service does
+not crawl, probe or connect to P2P nodes. Its only outgoing requests are to
+the configured RPC endpoint.
 
-Features:
-* regularly revisits known nodes to check their availability
-* bans nodes after enough failures, or bad behaviour
-* accepts nodes down to v0.18.0.0 to request new IP addresses from,
-  but only reports good post-v0.18.0.0 nodes.
-* keeps statistics over (exponential) windows of 2 hours, 8 hours,
-  1 day and 1 week, to base decisions on.
-* very low memory (a few tens of megabytes) and cpu requirements.
-* crawlers run in parallel (by default 96 threads simultaneously).
-
-REQUIREMENTS
+How it works
 ------------
 
-$ sudo apt-get install build-essential libboost-all-dev libssl-dev
+* At startup, calls `masternode list json` before accepting DNS queries.
+* Polls RPC periodically (every 300 seconds by default), independently of DNS
+  traffic. RPC requests have a configurable timeout.
+* Publishes only masternodes whose status is exactly `ENABLED`, excluding
+  `POSE_BANNED` and all other statuses. Uses `addresses.core_p2p`, with the
+  legacy `address` field as a fallback for older Core versions. Platform HTTPS
+  and platform P2P addresses are not used.
+* Caches a deduplicated list of literal IPv4/IPv6 addresses in memory. Each DNS
+  reply samples eligible addresses randomly without duplicates, as in dnseed.
+  A/AAAA records contain only addresses of the requested family; packet size
+  limits determine how many of the sampled records fit in a reply.
+* On RPC connection failures, timeouts, HTTP errors, RPC errors or malformed
+  responses, keeps serving the current cache until polling succeeds again.
+  If RPC has not provided a usable list yet, serves the configured bootstrap
+  addresses instead.
+* A successful response with no active IP addresses replaces the old cache
+  with bootstrap addresses. This avoids retaining nodes that RPC now reports
+  as banned. If bootstrap is empty too, DNS returns no A/AAAA records.
+* The cache is not persisted across restarts. Old crawler database files are
+  neither read nor written.
 
-USAGE
------
+Build and test
+--------------
 
-Assuming you want to run a dns seed on dnsseed.example.com, you will
-need an authorative NS record in example.com's domain record, pointing
-to for example vps.example.com:
+Requires a C++17 compiler, make and libcurl development headers/libraries.
+UniValue (the Core JSON parser) is vendored under `vendor/univalue` with its
+license and source revision; Boost and OpenSSL development headers are no
+longer needed by the seeder itself.
 
-$ dig -t NS dnsseed.example.com
+Debian/Ubuntu:
 
-;; ANSWER SECTION
-dnsseed.example.com.   86400    IN      NS     vps.example.com.
+    sudo apt-get install build-essential pkg-config libcurl4-openssl-dev python3
+    make
+    make test
 
-On the system vps.example.com, you can now run dnsseed:
+macOS with MacPorts:
 
-./dnsseed -h dnsseed.example.com -n vps.example.com
+    sudo port install curl pkgconfig
+    make
+    make test
 
-If you want the DNS server to report SOA records, please provide an
-e-mail address (with the @ part replaced by .) using -m.
+Tests use Python's standard library, a local mock RPC server and real UDP DNS
+queries. They cover RPC authentication, filtering, address families, random
+answers, concurrent queries, startup fallback, cache retention during errors
+and timeouts, recovery and removal of newly banned nodes. Tests need permission
+to open loopback TCP/UDP sockets.
 
-COMPILING
----------
-Compiling will require boost and ssl.  On debian systems, these are provided
-by `libboost-dev` and `libssl-dev` respectively.
+Configuration
+-------------
 
-$ make
+    cp .env.example .env
+    chmod 600 .env
 
-This will produce the `dnsseed` binary.
+Edit `.env` in the working directory. It is ignored by Git. Environment
+variables override `.env`; optional DNS command-line flags override both.
+Values may be unquoted or enclosed in single/double quotes. Blank lines,
+comments and an optional `export ` prefix are supported; shell interpolation
+and backslash escape processing are not performed.
 
+    RPC_URL=http://127.0.0.1:19606/
+    RPC_USER=user
+    RPC_PASSWORD=your-rpc-password
+    RPC_POLL_INTERVAL=300
+    RPC_TIMEOUT=10
+    BOOTSTRAP_NODES=192.0.2.10,192.0.2.11,[2001:db8::10]:63636
+    DNS_HOST=dnsseed.example.com
+    DNS_NS=ns.example.com
+    DNS_MBOX=hostmaster.example.com
+    DNS_PORT=5353
+    DNS_THREADS=4
+    DNS_TTL=300
+    DNS_NS_TTL=40000
 
-RUNNING AS NON-ROOT
--------------------
+Replace the documentation IP addresses above with known bootstrap nodes and
+configure the real DNS host and nameserver. Bootstrap accepts comma/space-
+separated numeric IPv4 or IPv6 addresses, optionally with a port; IPv6 services
+with a port must use brackets. Ports are stripped for DNS answers. Hostnames
+are deliberately rejected, so bootstrap loading never triggers peer discovery.
+Unspecified, loopback and multicast addresses are rejected.
 
-Typically, you'll need root privileges to listen to port 53 (name service).
+`RPC_URL` defaults to `http://127.0.0.1:19606/`; change it for a different
+network or RPC endpoint. HTTP Basic authentication uses `RPC_USER` and
+`RPC_PASSWORD`. HTTPS uses normal certificate verification. Requests go
+directly to the configured endpoint without ambient HTTP proxy settings or
+redirect following.
 
-One solution is using an iptables rule (Linux only) to redirect it to
-a non-privileged port:
+`RPC_POLL_INTERVAL` is the delay between the completion of a poll and the next
+poll (1..86400 seconds). `RPC_TIMEOUT` limits each request (1..300 seconds).
+`DNS_HOST` and `DNS_NS` are required. `DNS_MBOX` defaults to
+`hostmaster.<DNS_HOST>`; use DNS mailbox notation with `@` replaced by `.`.
+`DNS_PORT` defaults to 53, `DNS_THREADS` to 4, `DNS_TTL` to 300 and
+`DNS_NS_TTL` to 40000. Use the example's unprivileged port 5353 for local tests.
 
-$ iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-port 5353
+Run
+---
 
-If properly configured, this will allow you to run dnsseed in userspace, using
-the -p 5353 option.
+    ./dnsseed
+
+Optional DNS overrides remain available:
+
+    ./dnsseed -h dnsseed.example.com -n ns.example.com -m hostmaster.example.com -p 5353 -d 4
+    dig @127.0.0.1 -p 5353 dnsseed.example.com A
+    dig @127.0.0.1 -p 5353 dnsseed.example.com AAAA
+
+For public operation, delegate the seed's zone to your nameserver with an NS
+record in the parent zone and make the configured UDP port reachable. Port 53
+normally requires elevated privileges or a platform-specific port redirect.
+
+Crawler, proxy, ban database, service-flag filter and testnet discovery options
+have been removed. RPC's masternode list does not provide P2P service bits, so
+`x<flags>.<seed>` queries have no address records. Select the desired network
+by setting its RPC endpoint and bootstrap list in `.env`.

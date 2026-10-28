@@ -1,3 +1,8 @@
+#define _GNU_SOURCE
+#define _DARWIN_C_SOURCE
+#ifdef __APPLE__
+#define __APPLE_USE_RFC_3542
+#endif
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,23 +21,8 @@
 
 #define BUFLEN 512
 
-#if defined IP_RECVDSTADDR
-# define DSTADDR_SOCKOPT IP_RECVDSTADDR
-# define DSTADDR_DATASIZE (CMSG_SPACE(sizeof(struct in6_addr)))
-# define dstaddr(x) (CMSG_DATA(x))
-#elif defined IPV6_PKTINFO
-struct in6_pktinfo
-  {
-    struct in6_addr ipi6_addr;	/* src/dst IPv6 address */
-    unsigned int ipi6_ifindex;	/* send/recv interface index */
-  };
-
-# define DSTADDR_SOCKOPT IPV6_PKTINFO
-# define DSTADDR_DATASIZE (CMSG_SPACE(sizeof(struct in6_pktinfo)))
-# define dstaddr(x) (&(((struct in6_pktinfo *)(CMSG_DATA(x)))->ipi6_addr))
-#else
-# error "can't determine socket option"
-#endif
+#define DSTADDR_SOCKOPT IPV6_RECVPKTINFO
+#define DSTADDR_DATASIZE CMSG_SPACE(sizeof(struct in6_pktinfo))
 
 union control_data {
   struct cmsghdr cmsg;
@@ -68,6 +58,7 @@ int static parse_name(const unsigned char **inpos, const unsigned char *inend, c
     // read length of next component
     int octet = *((*inpos)++);
     if (octet == 0) {
+      if (bufused >= bufsize) return -2;
       buf[bufused] = 0;
       return 0;
     }
@@ -327,7 +318,7 @@ ssize_t static dnshandle(dns_opt_t *opt, const unsigned char *inbuf, size_t insi
   // A/AAAA records
   if ((typ == TYPE_A || typ == TYPE_AAAA || typ == QTYPE_ANY) && (cls == CLASS_IN || cls == QCLASS_ANY)) {
     addr_t addr[32];
-    int naddr = opt->cb((void*)opt, name, addr, 32, typ == TYPE_A || typ == QTYPE_ANY, typ == TYPE_AAAA || typ == QTYPE_ANY);
+    int naddr = opt->cb(opt->cb_data, name, addr, 32, typ == TYPE_A || typ == QTYPE_ANY, typ == TYPE_AAAA || typ == QTYPE_ANY);
     int n = 0;
     while (n < naddr) {
       int ret = 1;
@@ -379,36 +370,33 @@ error:
 
 static int listenSocket = -1;
 
-int dnsserver(dns_opt_t *opt) {
-  struct sockaddr_in6 si_other;
-  int senderSocket = -1;
-  senderSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-  if (senderSocket == -1) 
-    return -3;
-
-  int replySocket;
-  if (listenSocket == -1) {
-    struct sockaddr_in6 si_me;
-    if ((listenSocket=socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP))==-1) {
-      listenSocket = -1;
-      return -1;
-    }
-    replySocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-    if (replySocket == -1)
-    {
-      close(listenSocket);
-      return -1;
-    }
-    int sockopt = 1;
-    setsockopt(listenSocket, IPPROTO_IPV6, DSTADDR_SOCKOPT, &sockopt, sizeof sockopt);
-    memset((char *) &si_me, 0, sizeof(si_me));
-    si_me.sin6_family = AF_INET6;
-    si_me.sin6_port = htons(opt->port);
-    si_me.sin6_addr = in6addr_any;
-    if (bind(listenSocket, (struct sockaddr*)&si_me, sizeof(si_me))==-1)
-      return -2;
+int dnslisten(int port) {
+  struct sockaddr_in6 address;
+  listenSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+  if (listenSocket == -1) return -1;
+  int dualstack = 0;
+  if (setsockopt(listenSocket, IPPROTO_IPV6, IPV6_V6ONLY, &dualstack, sizeof(dualstack)) != 0) {
+    close(listenSocket);
+    listenSocket = -1;
+    return -1;
   }
-  
+  int sockopt = 1;
+  setsockopt(listenSocket, IPPROTO_IPV6, DSTADDR_SOCKOPT, &sockopt, sizeof(sockopt));
+  memset(&address, 0, sizeof(address));
+  address.sin6_family = AF_INET6;
+  address.sin6_port = htons(port);
+  address.sin6_addr = in6addr_any;
+  if (bind(listenSocket, (struct sockaddr*)&address, sizeof(address)) != 0) {
+    close(listenSocket);
+    listenSocket = -1;
+    return -2;
+  }
+  return 0;
+}
+
+int dnsserver(dns_opt_t *opt) {
+  if (listenSocket == -1) return -1;
+  struct sockaddr_in6 si_other;
   unsigned char inbuf[BUFLEN], outbuf[BUFLEN];
   struct iovec iov[1] = {
     {
@@ -427,6 +415,9 @@ int dnsserver(dns_opt_t *opt) {
   };
   for (; 1; ++(opt->nRequests))
   {
+    msg.msg_namelen = sizeof(si_other);
+    msg.msg_controllen = sizeof(cmsg);
+    msg.msg_flags = 0;
     ssize_t insize = recvmsg(listenSocket, &msg, 0);
 //    unsigned char *addr = (unsigned char*)&si_other.sin_addr.s_addr;
 //    printf("DNS: Request %llu from %i.%i.%i.%i:%i of %i bytes\n", (unsigned long long)(opt->nRequests), addr[0], addr[1], addr[2], addr[3], ntohs(si_other.sin_port), (int)insize);
@@ -440,7 +431,7 @@ int dnsserver(dns_opt_t *opt) {
     bool handled = false;
     for (struct cmsghdr*hdr = CMSG_FIRSTHDR(&msg); hdr; hdr = CMSG_NXTHDR(&msg, hdr))
     {
-      if (hdr->cmsg_level == IPPROTO_IP && hdr->cmsg_type == DSTADDR_SOCKOPT)
+      if (hdr->cmsg_level == IPPROTO_IPV6 && hdr->cmsg_type == IPV6_PKTINFO)
       {
         msg.msg_iov[0].iov_base = outbuf;
         msg.msg_iov[0].iov_len = ret;

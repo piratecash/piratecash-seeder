@@ -19,10 +19,13 @@ typedef struct {
   const char *ns;
   const char *mbox;
   int (*cb)(void *opt, char *requested_hostname, addr_t *addr, int max, int ipv4, int ipv6);
+  void *cb_data;
   // stats
   uint64_t nRequests;
 } dns_opt_t;
 
 extern int dnsserver(dns_opt_t *opt);
+// Called once before starting workers; workers share the bound socket.
+extern int dnslisten(int port);
 
 #endif

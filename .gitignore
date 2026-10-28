@@ -1,3 +1,5 @@
 *.o
-dnsseed*
-dnsstats.log
+*.d
+/dnsseed
+/.env
+__pycache__/

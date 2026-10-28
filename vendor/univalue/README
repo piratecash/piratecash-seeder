@@ -1,0 +1,3 @@
+UniValue JSON parser, vendored from PirateCash Core src/univalue at commit
+8e259d8832a1849677274ca0a0be6b55840d389d (https://github.com/piratecash/piratecash).
+Sources are unmodified. See COPYING and the copyright notices in each file.

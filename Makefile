@@ -1,13 +1,26 @@
-CXXFLAGS = -O3 -g0
-LDFLAGS = $(CXXFLAGS)
+CXXFLAGS ?= -O2 -g
+CFLAGS ?= -O2 -g
+CPPFLAGS += -Ivendor/univalue/include $(shell pkg-config --cflags libcurl 2>/dev/null)
+LDLIBS += $(shell pkg-config --libs libcurl 2>/dev/null || echo -lcurl)
+UNIVALUE = $(wildcard vendor/univalue/lib/*.cpp)
+OBJECTS = main.o config.o rpc.o dns.o $(UNIVALUE:.cpp=.o)
 
-dnsseed: dns.o bitcoin.o netbase.o protocol.o db.o main.o util.o
-	g++ -pthread $(LDFLAGS) -o dnsseed dns.o bitcoin.o netbase.o protocol.o db.o main.o util.o -lcrypto
+.PHONY: all clean test
+all: dnsseed
 
-%.o: %.cpp bitcoin.h netbase.h protocol.h db.h serialize.h uint256.h util.h
-	g++ -std=c++11 -pthread $(CXXFLAGS) -Wall -Wno-unused -Wno-sign-compare -Wno-reorder -Wno-comment -c -o $@ $<
-
-dns.o: dns.c
-	gcc -pthread -std=c99 $(CXXFLAGS) dns.c -Wall -c -o dns.o
+dnsseed: $(OBJECTS)
+	$(CXX) -pthread $(LDFLAGS) -o $@ $(OBJECTS) $(LDLIBS)
 
 %.o: %.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -std=c++17 -pthread -Wall -Wextra -MMD -MP -c -o $@ $<
+
+dns.o: dns.c dns.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 -pthread -Wall -Wextra -MMD -MP -c -o $@ $<
+
+test: dnsseed
+	python3 -m unittest discover -s tests -v
+
+clean:
+	rm -f dnsseed $(OBJECTS) $(OBJECTS:.o=.d)
+
+-include $(OBJECTS:.o=.d)
